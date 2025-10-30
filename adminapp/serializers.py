@@ -1,0 +1,22 @@
+from rest_framework import serializers
+
+from adminapp.models import Category
+
+
+
+
+
+
+
+
+
+class CategorySerializers(serializers.ModelSerializer):
+
+    class Meta:
+
+        model=Category
+
+        fields="__all__"
+
+        read_only_fields=["owner"]
+

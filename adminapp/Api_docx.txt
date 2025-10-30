@@ -1,0 +1,4 @@
+*)API for creating category
+url:http://127.0.0.1:8000/feezy/category/
+methode:post
+body:name
