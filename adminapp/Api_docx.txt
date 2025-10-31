@@ -4,10 +4,12 @@ methode:post
 body:name
 
 
-*)API for creating User for customer login
+*)API for creating Client
 url:http://127.0.0.1:8000/feezy/user/
 methode:post
-body:username,email,password1,password2
+body:{
+    username,email,password1,password2,business_name,
+    contact_number,address,payment_method,category}
 
 *)API for creating Token
 url:http://127.0.0.1:8000/feezy/token/
