@@ -2,3 +2,16 @@
 url:http://127.0.0.1:8000/feezy/category/
 methode:post
 body:name
+
+
+*)API for creating User for customer login
+url:http://127.0.0.1:8000/feezy/user/
+methode:post
+body:username,email,password1,password2
+
+*)API for creating Token
+url:http://127.0.0.1:8000/feezy/token/
+methode:post
+body:username,password
+
+
