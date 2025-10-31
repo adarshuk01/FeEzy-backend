@@ -1,10 +1,10 @@
 from django.shortcuts import render
 
-from adminapp.serializers import CategorySerializers,UserCreateSerializer,LoginSerializer
+from adminapp.serializers import CategorySerializer,LoginSerializer,ClientCreateSerializer
 
 from rest_framework import generics
 
-from adminapp.models import Category,User
+from adminapp.models import Category,Client
 
 from rest_framework import authentication,permissions
 
@@ -24,10 +24,6 @@ from rest_framework import status
 
 
 
-class UserListCreateApiView(generics.ListCreateAPIView):
-    serializer_class = UserCreateSerializer
-    queryset = User.objects.all()
-    permission_classes = [permissions.IsAdminUser]
 
 
 class GetTokenApiView(APIView):
@@ -58,7 +54,7 @@ class GetTokenApiView(APIView):
 
 class CategoryCreateApiView(generics.ListCreateAPIView):
 
-    serializer_class=CategorySerializers
+    serializer_class=CategorySerializer
 
     queryset=Category.objects.all()
 
@@ -66,10 +62,25 @@ class CategoryCreateApiView(generics.ListCreateAPIView):
 
     authentication_classes=[authentication.BasicAuthentication]
 
-    def perform_create(self, serializer):
-        return serializer.save(owner=self.request.user)
-    
-    def get_queryset(self):
-        return Category.objects.filter(owner=self.request.user)
+ 
     
 
+
+
+class ClientRegisterApiView(generics.CreateAPIView):
+    serializer_class = ClientCreateSerializer
+    queryset = Client.objects.all()
+    permission_classes = [permissions.IsAdminUser]  
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            client = serializer.save()
+            return Response(
+                {
+                    "message": "Client registered successfully",
+                    "client": serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

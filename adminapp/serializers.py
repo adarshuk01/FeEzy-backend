@@ -1,24 +1,20 @@
 from rest_framework import serializers
-
-from adminapp.models import Category
-
-from django.contrib.auth.models import User
+from adminapp.models import Category, Client
 
 
-
-
-
-class UserCreateSerializer(serializers.ModelSerializer):
-
+# -------- Client Registration --------
+class ClientCreateSerializer(serializers.ModelSerializer):
     password1 = serializers.CharField(write_only=True)
-
     password2 = serializers.CharField(write_only=True)
-
-    password = serializers.CharField(read_only=True)
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())  # ✅ added
 
     class Meta:
-        model = User
-        fields = ["username", "email", "password", "password1", "password2"]
+        model = Client
+        fields = [
+            "username", "email", "password1", "password2",
+            "business_name", "contact_number", "address",
+            "payment_method", "category"
+        ]
 
     def validate(self, data):
         if data.get("password1") != data.get("password2"):
@@ -26,31 +22,32 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        password1 = validated_data.pop("password1")
-        password2 = validated_data.pop("password2")
-        return User.objects.create_user(**validated_data, password=password1)
+        password = validated_data.pop("password1")
+        validated_data.pop("password2", None)
+        client = Client(**validated_data)
+        client.set_password(password)
+        client.save()
+        return client
 
 
 
+# -------- Login Serializer --------
 class LoginSerializer(serializers.Serializer):
-
-    username=serializers.CharField()
-
-    password=serializers.CharField()
+    username = serializers.CharField()
+    password = serializers.CharField()
 
 
-class CategorySerializers(serializers.ModelSerializer):
-
+# -------- Category Serializer --------
+class CategorySerializer(serializers.ModelSerializer):
     class Meta:
-
-        model=Category
-
-        fields="__all__"
-
-        read_only_fields=["owner"]
+        model = Category
+        fields = "__all__"
+        read_only_fields = ["id"]
 
 
-
-
-
-
+# -------- Client Serializer (for view/update) --------
+class ClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Client
+        fields = "__all__"
+        read_only_fields = ["id", "is_active", "subscription_start", "subscription_end"]

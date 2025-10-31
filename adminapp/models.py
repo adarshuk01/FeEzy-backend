@@ -1,41 +1,48 @@
 from datetime import date, timedelta
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractUser
 from django.conf import settings
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from rest_framework.authtoken.models import Token
 
 
 # -------- Category --------
 class Category(models.Model):
     name = models.CharField(max_length=150)
-    
-    owner=models.ForeignKey(User,on_delete=models.CASCADE)
-
-    def _str_(self):
+  
+    def __str__(self):
         return self.name
 
 
 # -------- Client (Owner) --------
-class Client(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    business_name = models.CharField(max_length=200)
-    contact_number = models.PositiveIntegerField()
-    address = models.CharField(max_length=255)
+from datetime import date, timedelta
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+
+# -------- Client (Owner) --------
+class Client(AbstractUser):
+    business_name = models.CharField(max_length=200, null=True, blank=True)
+    contact_number = models.PositiveIntegerField(null=True, blank=True)
+    address = models.CharField(max_length=255, null=True, blank=True)
     payment_method = models.CharField(
         max_length=255,
-        choices=[('Cash', 'Cash'), ('Gpay', 'Gpay'), ('Card', 'Card')]
+        choices=[('Cash', 'Cash'), ('Gpay', 'Gpay'), ('Card', 'Card')],
+        null=True,
+        blank=True
     )
-    category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    category = models.ForeignKey(
+        'Category',
+        on_delete=models.CASCADE,
+        related_name='clients',
+        null=True,
+        blank=True
+    )
 
-    subscription_start = models.DateField(auto_now_add=True)
-    subscription_end = models.DateField(blank=True, null=True)
+    subscription_start = models.DateField(auto_now_add=True, null=True, blank=True)
+    subscription_end = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
         if not self.subscription_start:
-          self.subscription_start = date.today()
+            self.subscription_start = date.today()
         if not self.subscription_end:
             self.subscription_end = self.subscription_start + timedelta(days=365)
         self.is_active = self.subscription_end >= date.today()
@@ -43,21 +50,21 @@ class Client(models.Model):
 
     @property
     def remaining_days(self):
-        remaining = (self.subscription_end - date.today()).days
-        return max(remaining, 0)
+        if self.subscription_end:
+            remaining = (self.subscription_end - date.today()).days
+            return max(remaining, 0)
+        return 0
 
     @property
     def expiry_message(self):
         days_left = self.remaining_days
-
-        if days_left < 0:
-            return "Your subscription has expired."
-        elif days_left == 0:
+        if days_left == 0:
             return "Your subscription expires today!"
         elif days_left <= 5:
             return f"Your subscription expires in {days_left} days."
+        elif days_left < 0:
+            return "Your subscription has expired."
         return None
-
 
     def renew_subscription(self, duration_days=365):
         self.subscription_start = date.today()
@@ -65,7 +72,11 @@ class Client(models.Model):
         self.is_active = True
         self.save()
 
-    def _str_(self):
+    def __str__(self):
+        return self.business_name or self.username
+
+
+    def __str__(self):
         return self.business_name
 
 
@@ -76,11 +87,11 @@ class SubscriptionPackage(models.Model):
     duration_days = models.PositiveIntegerField(help_text="Duration in days (e.g., 30, 90, 180, 365)")
     amount = models.DecimalField(max_digits=8, decimal_places=2)
 
-    def _str_(self):
+    def __str__(self):
         return f"{self.name} - {self.amount} ({self.duration_days} days)"
 
 
-# -------- Customer --------
+# -------- Base Customer --------
 class BaseCustomer(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='customers')
     name = models.CharField(max_length=100)
@@ -118,9 +129,10 @@ class BaseCustomer(models.Model):
         self.is_active = False
         self.save()
 
-    def _str_(self):
+    def __str__(self):
         return f"{self.name} ({self.client.business_name})"
-    
+
+
 # -------- Batch --------
 class Batch(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='batches')
@@ -129,14 +141,16 @@ class Batch(models.Model):
     end_time = models.TimeField(blank=True, null=True)
     days = models.CharField(max_length=100, blank=True, null=True, help_text="e.g. Mon-Fri")
 
-    def _str_(self):
+    def __str__(self):
         return f"{self.name} ({self.client.business_name})"
-    
+
+
 # -------- Education --------
 class EducationCustomer(BaseCustomer):
     subject = models.CharField(max_length=200)
     batch = models.ForeignKey(Batch, on_delete=models.SET_NULL, null=True, related_name='students')
     parent_contact = models.CharField(max_length=100, blank=True, null=True)
+
 
 # -------- Sports --------
 class SportsCustomer(BaseCustomer):
@@ -146,7 +160,7 @@ class SportsCustomer(BaseCustomer):
     injury_history = models.TextField(blank=True, null=True)
 
 
-# -------- Monthly Payment Record (NEW) --------
+# -------- Monthly Payment Record --------
 class PaymentRecord(models.Model):
     customer = models.ForeignKey(BaseCustomer, on_delete=models.CASCADE, related_name='payments')
     month = models.PositiveIntegerField(help_text="Month number (1=Jan, 12=Dec)")
@@ -182,7 +196,7 @@ class PaymentRecord(models.Model):
         self.customer.total_paid = total_paid
         self.customer.save()
 
-    def _str_(self):
+    def __str__(self):
         return f"{self.customer.name} - {self.month}/{self.year} - {self.status}"
 
 
@@ -196,5 +210,5 @@ class Attendance(models.Model):
         unique_together = ('customer', 'date')
         ordering = ['-date']
 
-    def _str_(self):
+    def __str__(self):
         return f"{self.customer.name} - {self.date} - {'Present' if self.present else 'Absent'}"
