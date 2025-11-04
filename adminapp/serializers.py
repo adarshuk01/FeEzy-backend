@@ -1,33 +1,70 @@
+import random
+import string
 from rest_framework import serializers
 from adminapp.models import Category, Client
 
 
-# -------- Client Registration --------
+import random
+import string
+from django.core.mail import send_mail
+from rest_framework import serializers
+from adminapp.models import Client
+from django.conf import settings
+
+
 class ClientCreateSerializer(serializers.ModelSerializer):
-    password1 = serializers.CharField(write_only=True)
-    password2 = serializers.CharField(write_only=True)
-    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())  # ✅ added
+    email = serializers.EmailField()
+    password = serializers.CharField(read_only=True)
 
     class Meta:
         model = Client
         fields = [
-            "username", "email", "password1", "password2",
-            "business_name", "contact_number", "address",
-            "payment_method", "category"
+            'username',
+            'email',
+            'password',
+            'business_name',
+            'contact_number',
+            'address',
+            'payment_method',
         ]
 
-    def validate(self, data):
-        if data.get("password1") != data.get("password2"):
-            raise serializers.ValidationError("Passwords do not match.")
-        return data
-
     def create(self, validated_data):
-        password = validated_data.pop("password1")
-        validated_data.pop("password2", None)
+        # Generate random 10-character password
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+
+        # Create client and hash password
         client = Client(**validated_data)
         client.set_password(password)
         client.save()
+
+        # Attach generated password temporarily (for response)
+        client.generated_password = password
+
+        # -------- Send email to the client --------
+        subject = "Your Account Credentials"
+        message = (
+            f"Hello {client.username},\n\n"
+            f"Your account has been created successfully.\n"
+            f"Here are your login details:\n\n"
+            f"Username: {client.username}\n"
+            f"Password: {password}\n\n"
+            f"Please change your password after your first login.\n\n"
+            f"Regards,\nAdmin Team"
+        )
+        from_email = settings.DEFAULT_FROM_EMAIL
+        recipient_list = [client.email]
+
+        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+
         return client
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if hasattr(instance, 'generated_password'):
+            data['generated_password'] = instance.generated_password
+        return data
+
+
 
 
 
