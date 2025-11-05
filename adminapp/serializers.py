@@ -1,20 +1,20 @@
 import random
 import string
+import requests
+from datetime import date, timedelta
 from rest_framework import serializers
-from adminapp.models import Category, Client
-
-
-import random
-import string
+from adminapp.models import Client,Category
 from django.core.mail import send_mail
-from rest_framework import serializers
-from adminapp.models import Client
 from django.conf import settings
+from django.contrib.auth import get_user_model
+
+Client = get_user_model()
 
 
 class ClientCreateSerializer(serializers.ModelSerializer):
     email = serializers.EmailField()
     password = serializers.CharField(read_only=True)
+    country_code = serializers.CharField(write_only=True, required=False)  # ✅ for currency API
 
     class Meta:
         model = Client
@@ -26,35 +26,74 @@ class ClientCreateSerializer(serializers.ModelSerializer):
             'contact_number',
             'address',
             'payment_method',
+            'country_code',            # used for currency lookup
+            'subscription_amount',
+            'subscription_currency',   # ✅ updated to match your model
+            'subscription_start',
+            'subscription_end',
+            'is_active',
+        ]
+        read_only_fields = [
+            'password',
+            'subscription_amount',
+            'subscription_currency',
+            'subscription_start',
+            'subscription_end',
+            'is_active',
         ]
 
     def create(self, validated_data):
-        # Generate random 10-character password
+        # 🔹 Extract and remove country code
+        country_code = validated_data.pop('country_code', 'IN')
+
+        # 🔹 Generate random password (10 characters)
         password = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
-        # Create client and hash password
+        # 🔹 Create client instance
         client = Client(**validated_data)
         client.set_password(password)
+
+        # --- Subscription setup ---
+        client.subscription_start = date.today()
+        client.subscription_end = client.subscription_start + timedelta(days=365)
+        client.subscription_amount = 5000.00  # base price
+        client.subscription_currency = "INR"  # default
+
+        # --- Fetch currency from free API ---
+        try:
+            api_url = f"https://restcountries.com/v3.1/alpha/{country_code}"
+            response = requests.get(api_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()[0]
+                currency_code = list(data["currencies"].keys())[0]
+                client.subscription_currency = currency_code
+            else:
+                client.subscription_currency = "INR"
+        except Exception as e:
+            print("Currency fetch failed:", e)
+            client.subscription_currency = "INR"
+
+        # 🔹 Save the client
         client.save()
 
-        # Attach generated password temporarily (for response)
+        # Attach generated password for API response
         client.generated_password = password
 
-        # -------- Send email to the client --------
+        # --- Send email with credentials ---
         subject = "Your Account Credentials"
         message = (
             f"Hello {client.username},\n\n"
-            f"Your account has been created successfully.\n"
-            f"Here are your login details:\n\n"
+            f"Your account has been created successfully.\n\n"
+            f"Here are your login details:\n"
             f"Username: {client.username}\n"
             f"Password: {password}\n\n"
+            f"Subscription: 1 Year\n"
+            f"Amount: {client.subscription_amount} {client.subscription_currency}\n"
+            f"Valid Till: {client.subscription_end}\n\n"
             f"Please change your password after your first login.\n\n"
             f"Regards,\nAdmin Team"
         )
-        from_email = settings.DEFAULT_FROM_EMAIL
-        recipient_list = [client.email]
-
-        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [client.email], fail_silently=False)
 
         return client
 
@@ -66,12 +105,10 @@ class ClientCreateSerializer(serializers.ModelSerializer):
 
 
 
-
-
 # -------- Login Serializer --------
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
-    password = serializers.CharField()
+    password = serializers.CharField(write_only=True) 
 
 
 # -------- Category Serializer --------
@@ -88,3 +125,33 @@ class ClientSerializer(serializers.ModelSerializer):
         model = Client
         fields = "__all__"
         read_only_fields = ["id", "is_active", "subscription_start", "subscription_end"]
+
+
+
+class PasswordUpdateSerializer(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        user = self.context['request'].user
+
+        # Check old password
+        if not user.check_password(data['old_password']):
+            raise serializers.ValidationError({"old_password": "Incorrect old password"})
+
+        # Check if new passwords match
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": "Passwords do not match"})
+
+        # Optional: Add password strength checks
+        if len(data['new_password']) < 6:
+            raise serializers.ValidationError({"new_password": "Password must be at least 6 characters long"})
+
+        return data
+
+    def save(self, **kwargs):
+        user = self.context['request'].user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        return user

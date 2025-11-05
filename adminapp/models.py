@@ -12,10 +12,8 @@ class Category(models.Model):
         return self.name
 
 
-# -------- Client (Owner) --------
-from datetime import date, timedelta
-from django.db import models
-from django.contrib.auth.models import AbstractUser
+
+
 
 # -------- Client (Owner) --------
 class Client(AbstractUser):
@@ -36,18 +34,37 @@ class Client(AbstractUser):
         blank=True
     )
 
+    # -------- Subscription details --------
     subscription_start = models.DateField(auto_now_add=True, null=True, blank=True)
     subscription_end = models.DateField(null=True, blank=True)
+    subscription_amount = models.DecimalField(  
+        max_digits=8,
+        decimal_places=2,
+        default=5000.00,
+        help_text="Subscription amount in INR"
+    )
+    subscription_currency = models.CharField(  
+        max_length=10,
+        default='INR',
+        help_text="Currency code for the subscription (e.g., INR, USD, AED)"
+    )
     is_active = models.BooleanField(default=True)
 
+    # -------- Save Method --------
     def save(self, *args, **kwargs):
+        # Set default subscription start and end dates
         if not self.subscription_start:
             self.subscription_start = date.today()
         if not self.subscription_end:
             self.subscription_end = self.subscription_start + timedelta(days=365)
+        # Set default amount if not provided
+        if not self.subscription_amount:
+            self.subscription_amount = 5000.00
+        # Ensure active status
         self.is_active = self.subscription_end >= date.today()
         super().save(*args, **kwargs)
 
+    # -------- Remaining Days --------
     @property
     def remaining_days(self):
         if self.subscription_end:
@@ -55,6 +72,7 @@ class Client(AbstractUser):
             return max(remaining, 0)
         return 0
 
+    # -------- Expiry Message --------
     @property
     def expiry_message(self):
         days_left = self.remaining_days
@@ -66,18 +84,18 @@ class Client(AbstractUser):
             return "Your subscription has expired."
         return None
 
-    def renew_subscription(self, duration_days=365):
+    # -------- Renewal --------
+    def renew_subscription(self, duration_days=365, amount=5000.00, currency='INR'):
         self.subscription_start = date.today()
         self.subscription_end = self.subscription_start + timedelta(days=duration_days)
+        self.subscription_amount = amount
+        self.subscription_currency = currency
         self.is_active = True
         self.save()
 
     def __str__(self):
         return self.business_name or self.username
 
-
-    def __str__(self):
-        return self.business_name
 
 
 # -------- Subscription Packages --------
@@ -131,6 +149,7 @@ class BaseCustomer(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.client.business_name})"
+
 
 
 # -------- Batch --------

@@ -8,7 +8,9 @@ urlpatterns = [
 
     path('user/',views.ClientRegisterApiView.as_view()),
 
-    path('token/',views.GetTokenApiView.as_view())
+    path('token/',views.GetTokenApiView.as_view()),
+
+    path('update-password/',views.PasswordUpdateApiView.as_view())
 
 
 ]
