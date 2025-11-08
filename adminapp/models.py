@@ -15,14 +15,18 @@ class Category(models.Model):
 
 
 
-# -------- Client (Owner) --------
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+from datetime import date, timedelta
+
 class Client(AbstractUser):
-    business_name = models.CharField(max_length=200, null=True, blank=True)
-    contact_number = models.PositiveIntegerField(null=True, blank=True)
+    business_name = models.CharField(max_length=200, null=True, blank=True, unique=True)
+    contact_number = models.PositiveIntegerField(null=True, blank=True, unique=True)
+    email = models.EmailField(unique=True, null=True, blank=True)  # ✅ unique email field
     address = models.CharField(max_length=255, null=True, blank=True)
     payment_method = models.CharField(
         max_length=255,
-        choices=[('Cash', 'Cash'), ('Gpay', 'Gpay'), ('Card', 'Card')],
+        choices=[('Cash', 'Cash'), ('Upi', 'Upi'), ('Card', 'Card')],
         null=True,
         blank=True
     )
@@ -37,30 +41,33 @@ class Client(AbstractUser):
     # -------- Subscription details --------
     subscription_start = models.DateField(auto_now_add=True, null=True, blank=True)
     subscription_end = models.DateField(null=True, blank=True)
-    subscription_amount = models.DecimalField(  
+    subscription_amount = models.DecimalField(
         max_digits=8,
         decimal_places=2,
         default=5000.00,
         help_text="Subscription amount in INR"
     )
-    subscription_currency = models.CharField(  
+    subscription_currency = models.CharField(
         max_length=10,
         default='INR',
         help_text="Currency code for the subscription (e.g., INR, USD, AED)"
+    )
+    currency_emoji = models.CharField(  
+        max_length=5,
+        null=True,
+        blank=True,
+        help_text="Emoji representation of the currency (e.g., ₹, 💵, 💶)"
     )
     is_active = models.BooleanField(default=True)
 
     # -------- Save Method --------
     def save(self, *args, **kwargs):
-        # Set default subscription start and end dates
         if not self.subscription_start:
             self.subscription_start = date.today()
         if not self.subscription_end:
             self.subscription_end = self.subscription_start + timedelta(days=365)
-        # Set default amount if not provided
         if not self.subscription_amount:
             self.subscription_amount = 5000.00
-        # Ensure active status
         self.is_active = self.subscription_end >= date.today()
         super().save(*args, **kwargs)
 
@@ -95,6 +102,7 @@ class Client(AbstractUser):
 
     def __str__(self):
         return self.business_name or self.username
+
 
 
 
@@ -231,3 +239,7 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.customer.name} - {self.date} - {'Present' if self.present else 'Absent'}"
+
+
+
+

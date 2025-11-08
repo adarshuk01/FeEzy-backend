@@ -119,12 +119,7 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
-# -------- Client Serializer (for view/update) --------
-class ClientSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Client
-        fields = "__all__"
-        read_only_fields = ["id", "is_active", "subscription_start", "subscription_end"]
+
 
 
 
@@ -155,3 +150,30 @@ class PasswordUpdateSerializer(serializers.Serializer):
         user.set_password(self.validated_data['new_password'])
         user.save()
         return user
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not Client.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No user found with this email.")
+        return value
+
+    def save(self):
+        email = self.validated_data['email']
+        user = Client.objects.get(email=email)
+
+        # --- Generate a random 10-character password ---
+        new_password = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+        
+        # --- Set the new password (hashed automatically) ---
+        user.set_password(new_password)
+        user.save()
+
+        # --- Send email to the user ---
+        subject = "Your New Password"
+        message = f"Hello {user.username},\n\nYour new password is: {new_password}\n\nPlease log in and change it immediately."
+        from_email = settings.DEFAULT_FROM_EMAIL
+        recipient_list = [email]
+        send_mail(subject, message, from_email, recipient_list, fail_silently=False)

@@ -10,7 +10,13 @@ urlpatterns = [
 
     path('token/',views.GetTokenApiView.as_view()),
 
-    path('update-password/',views.PasswordUpdateApiView.as_view())
+    path('update-password/',views.PasswordUpdateApiView.as_view()),
+
+    path('client/<int:pk>/',views.ClientUpdateRetrieveDeleteView.as_view()),
+
+    path('clients/<int:pk>/renew/',views.ClientRenewApiView.as_view()),
+
+    path('forgot-password/',views.ForgotPasswordApiView.as_view())
 
 
 ]
