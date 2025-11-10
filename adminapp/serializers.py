@@ -32,6 +32,8 @@ class ClientCreateSerializer(serializers.ModelSerializer):
             'subscription_start',
             'subscription_end',
             'is_active',
+            'category',
+            'currency_emoji',          # ✅ allow frontend to send emoji
         ]
         read_only_fields = [
             'password',
@@ -43,13 +45,13 @@ class ClientCreateSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        # 🔹 Extract and remove country code
+        # 🔹 Extract and remove country code (keep currency_emoji)
         country_code = validated_data.pop('country_code', 'IN')
 
         # 🔹 Generate random password (10 characters)
         password = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
-        # 🔹 Create client instance
+        # 🔹 Create client instance with provided data (includes emoji)
         client = Client(**validated_data)
         client.set_password(password)
 
@@ -59,7 +61,7 @@ class ClientCreateSerializer(serializers.ModelSerializer):
         client.subscription_amount = 5000.00  # base price
         client.subscription_currency = "INR"  # default
 
-        # --- Fetch currency from free API ---
+        # --- Fetch currency from API (based on country_code) ---
         try:
             api_url = f"https://restcountries.com/v3.1/alpha/{country_code}"
             response = requests.get(api_url, timeout=5)
@@ -73,7 +75,7 @@ class ClientCreateSerializer(serializers.ModelSerializer):
             print("Currency fetch failed:", e)
             client.subscription_currency = "INR"
 
-        # 🔹 Save the client
+        # 🔹 Save the client (includes manually entered emoji)
         client.save()
 
         # Attach generated password for API response
@@ -102,6 +104,7 @@ class ClientCreateSerializer(serializers.ModelSerializer):
         if hasattr(instance, 'generated_password'):
             data['generated_password'] = instance.generated_password
         return data
+
 
 
 

@@ -135,6 +135,7 @@ class ClientUpdateRetrieveDeleteView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class ClientRenewApiView(APIView):
+    
     permission_classes = [permissions.IsAdminUser]  
 
     def post(self, request, pk, *args, **kwargs):
