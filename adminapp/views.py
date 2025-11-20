@@ -1,10 +1,12 @@
 from django.shortcuts import render
 
-from adminapp.serializers import CategorySerializer,LoginSerializer,ClientCreateSerializer,PasswordUpdateSerializer,ForgotPasswordSerializer
+from adminapp.serializers import (CategorySerializer,LoginSerializer,
+                                  ClientCreateSerializer,PasswordUpdateSerializer,
+                                  ForgotPasswordSerializer,BatchSerializer)
 
 from rest_framework import generics
 
-from adminapp.models import Category,Client
+from adminapp.models import Category,Client,Batch
 
 from rest_framework import authentication,permissions,status
 
@@ -24,9 +26,6 @@ from datetime import date, timedelta
 
 
 
-
-
-
 class GetTokenApiView(APIView):
     serializer_class = LoginSerializer
 
@@ -41,16 +40,39 @@ class GetTokenApiView(APIView):
             user = authenticate(request, username=username, password=password)
 
             if user is not None:
-                # Create or get token
+                # ✅ Check if subscription expired
+                if user.subscription_end and user.subscription_end < date.today():
+                    user.is_active = False
+                    user.save()
+                    return Response(
+                        {"message": "Your subscription has expired. Please contact admin to renew."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
+                # ✅ Block login for inactive users
+                if not user.is_active:
+                    return Response(
+                        {"message": "Account is inactive. Please contact admin."},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
+                # ✅ If active and not expired → create or get token
                 token, created = Token.objects.get_or_create(user=user)
+
+
+                print("user details",user.currency_emoji)
                 return Response(
                     {
                         "token": token.key,
                         "username": user.username,
                         "message": "Login successful",
+                        "currency_emoji":user.currency_emoji
+                        
                     },
                     status=status.HTTP_200_OK
                 )
+            
+
             else:
                 return Response(
                     {"message": "Invalid username or password"},
@@ -62,6 +84,7 @@ class GetTokenApiView(APIView):
 
 
 
+
 class CategoryCreateApiView(generics.ListCreateAPIView):
 
     serializer_class=CategorySerializer
@@ -70,7 +93,7 @@ class CategoryCreateApiView(generics.ListCreateAPIView):
 
     permission_classes=[permissions.IsAdminUser]
 
-    authentication_classes=[authentication.BasicAuthentication]
+    authentication_classes=[authentication.TokenAuthentication]
 
  
     
@@ -135,7 +158,7 @@ class ClientUpdateRetrieveDeleteView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class ClientRenewApiView(APIView):
-    
+
     permission_classes = [permissions.IsAdminUser]  
 
     def post(self, request, pk, *args, **kwargs):
@@ -189,3 +212,37 @@ class ForgotPasswordApiView(APIView):
             serializer.save()
             return Response({"message": "New password sent to your email."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+
+
+class BatchCreateListApiView(generics.ListCreateAPIView):
+
+    serializer_class = BatchSerializer
+
+    authentication_classes = [authentication.TokenAuthentication]
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+
+        return Batch.objects.filter(client=self.request.user)
+
+    def perform_create(self, serializer):
+
+        serializer.save(client=self.request.user)
+
+
+class BatchUpdateRetriveDeleteApiView(generics.RetrieveUpdateDestroyAPIView):
+
+    serializer_class=BatchSerializer
+
+    authentication_classes=[authentication.TokenAuthentication]
+
+    permission_classes=[permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        
+        return Batch.objects.filter(client=self.request.user)
+    

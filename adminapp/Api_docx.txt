@@ -57,9 +57,13 @@ methode:DELETE
 body:NILL
 
 
+
+
 *)API for a client subscription renewal
 url:http://127.0.0.1:8000/feezy/clients/{id}/renew/
 methode:DELETE
 body:NILL
+
+
 
 

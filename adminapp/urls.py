@@ -16,7 +16,13 @@ urlpatterns = [
 
     path('clients/<int:pk>/renew/',views.ClientRenewApiView.as_view()),
 
-    path('forgot-password/',views.ForgotPasswordApiView.as_view())
+    path('forgot-password/',views.ForgotPasswordApiView.as_view()),
+
+    path('batch/',views.BatchCreateListApiView.as_view()),
+
+    path('<int:pk>/batch/',views.BatchUpdateRetriveDeleteApiView.as_view())
+
+    
 
 
 ]

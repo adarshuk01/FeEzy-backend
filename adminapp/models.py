@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, timedelta,timezone
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
@@ -12,12 +12,6 @@ class Category(models.Model):
         return self.name
 
 
-
-
-
-from django.db import models
-from django.contrib.auth.models import AbstractUser
-from datetime import date, timedelta
 
 class Client(AbstractUser):
     business_name = models.CharField(max_length=200, null=True, blank=True, unique=True)
@@ -106,92 +100,155 @@ class Client(AbstractUser):
 
 
 
-# -------- Subscription Packages --------
-class SubscriptionPackage(models.Model):  
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='packages')
-    name = models.CharField(max_length=100)
-    duration_days = models.PositiveIntegerField(help_text="Duration in days (e.g., 30, 90, 180, 365)")
-    amount = models.DecimalField(max_digits=8, decimal_places=2)
-
-    def __str__(self):
-        return f"{self.name} - {self.amount} ({self.duration_days} days)"
-
-
-# -------- Base Customer --------
-class BaseCustomer(models.Model):
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='customers')
-    name = models.CharField(max_length=100)
-    age = models.PositiveIntegerField(blank=True, null=True)
-    contact_number = models.CharField(max_length=15)
-    email = models.EmailField(blank=True, null=True)
-
-    package = models.ForeignKey(SubscriptionPackage, on_delete=models.SET_NULL, null=True, related_name='customers')
-    start_date = models.DateField(default=date.today)
-    end_date = models.DateField(blank=True, null=True)
-    is_active = models.BooleanField(default=True)
-
-    total_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_due = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-
-    def save(self, *args, **kwargs):
-        if self.package and not self.end_date:
-            self.end_date = self.start_date + timedelta(days=self.package.duration_days)
-        self.is_active = self.end_date >= date.today()
-        super().save(*args, **kwargs)
-
-    def renew(self, new_package=None):
-        if new_package:
-            self.package = new_package
-        self.start_date = date.today()
-        self.end_date = self.start_date + timedelta(days=self.package.duration_days)
-        self.is_active = True
-        self.save()
-
-    def remaining_days(self):
-        remaining = (self.end_date - date.today()).days
-        return max(remaining, 0)
-
-    def mark_inactive(self):
-        self.is_active = False
-        self.save()
-
-    def __str__(self):
-        return f"{self.name} ({self.client.business_name})"
-
 
 
 # -------- Batch --------
 class Batch(models.Model):
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='batches')
-    name = models.CharField(max_length=100)  # e.g. Morning Batch, Evening Batch
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE,
+        related_name='batches', null=True, blank=True
+    )
+    name = models.CharField(max_length=100)  # e.g. Morning Batch
     start_time = models.TimeField(blank=True, null=True)
     end_time = models.TimeField(blank=True, null=True)
-    days = models.CharField(max_length=100, blank=True, null=True, help_text="e.g. Mon-Fri")
+    days = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="e.g. Mon-Fri"
+    )
 
     def __str__(self):
-        return f"{self.name} ({self.client.business_name})"
+        return f"{self.name} ({self.client.business_name})" if self.client else self.name
 
 
-# -------- Education --------
-class EducationCustomer(BaseCustomer):
-    subject = models.CharField(max_length=200)
-    batch = models.ForeignKey(Batch, on_delete=models.SET_NULL, null=True, related_name='students')
-    parent_contact = models.CharField(max_length=100, blank=True, null=True)
+
+# -------- Subscription --------
+class Subscription(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    name = models.CharField(max_length=200, null=True, blank=True)
+
+    tuition_fees = models.PositiveIntegerField()
+    tuition_recurring = models.BooleanField(default=False)
+
+    admission_fees = models.PositiveIntegerField()
+
+    management_fees = models.PositiveIntegerField()
+    management_recurring = models.BooleanField(default=False)
+
+    uniform_fees = models.PositiveIntegerField()
+    uniform_recurring = models.BooleanField(default=False)
+
+    transport_fees = models.PositiveIntegerField()
+    transport_recurring = models.BooleanField(default=False)
+
+    book_fees = models.PositiveIntegerField()
+    book_recurring = models.BooleanField(default=False)
+
+    other_fees = models.PositiveIntegerField()
+    other_recurring = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name or "Subscription"
 
 
-# -------- Sports --------
-class SportsCustomer(BaseCustomer):
-    sport_type = models.CharField(max_length=100)
-    coach_name = models.CharField(max_length=100)
-    experience_years = models.PositiveIntegerField()
-    injury_history = models.TextField(blank=True, null=True)
+
+# -------- Member (Customer) --------
+class Member(models.Model):
+    client = models.ForeignKey(
+        Client, on_delete=models.CASCADE, related_name='members'
+    )
+
+    # Personal Details
+    full_name = models.CharField(max_length=255)
+    date_of_birth = models.DateField(null=True, blank=True)
+
+    GENDER_CHOICES = [
+        ('M', 'Male'),
+        ('F', 'Female'),
+        ('O', 'Other'),
+    ]
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True, blank=True)
+    nationality = models.CharField(max_length=100, null=True, blank=True)
+    parent_name = models.CharField(max_length=255, help_text="Guardian or parent name.")
+
+    # Contact
+    contact_number = models.CharField(max_length=20, null=True, blank=True)
+    whatsapp_number = models.CharField(max_length=20, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+
+    # Enrollment
+    subscription = models.ForeignKey(
+        Subscription, on_delete=models.PROTECT,
+        related_name='enrolled_members'
+    )
+
+    start_date = models.DateField(
+        default=date.today, null=True, blank=True,
+        help_text="The actual enrollment date of the member, used for billing calculations."
+    )
+
+    TERM_CHOICES = [
+        ('M', 'Monthly'),
+        ('Q', 'Quarterly'),
+        ('A', 'Annual'),
+    ]
+    subscription_term = models.CharField(max_length=1, choices=TERM_CHOICES)
+
+    batch_group = models.ForeignKey(
+        Batch, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='members'
+    )
+
+    outstanding_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00,
+        help_text="Initial debt carried forward from before the app usage."
+    )
+
+    recurring_date = models.PositiveSmallIntegerField(
+        help_text="Day of the month (1–31) when recurring fee is due.",
+        null=True, blank=True
+    )
+
+    def __str__(self):
+        return self.full_name
+
+
+
+# -------- Payment --------
+class Payment(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE)
+    subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE)
+
+    PAYMENT_METHODS = [
+        ('cash', 'Cash'),
+        ('card', 'Card'),
+        ('gpay', 'GPay'),
+    ]
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS)
+
+    # Fee Components Paid
+    tuition_paid = models.BooleanField(default=False)
+    admission_paid = models.BooleanField(default=False)
+    management_paid = models.BooleanField(default=False)
+    uniform_paid = models.BooleanField(default=False)
+    transport_paid = models.BooleanField(default=False)
+    book_paid = models.BooleanField(default=False)
+    other_paid = models.BooleanField(default=False)
+
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2)
+    date_paid = models.DateField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Payment by {self.member.full_name} on {self.date_paid}"
+
 
 
 # -------- Monthly Payment Record --------
 class PaymentRecord(models.Model):
-    customer = models.ForeignKey(BaseCustomer, on_delete=models.CASCADE, related_name='payments')
+    customer = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='payments')
+
     month = models.PositiveIntegerField(help_text="Month number (1=Jan, 12=Dec)")
     year = models.PositiveIntegerField()
+
     amount_due = models.DecimalField(max_digits=10, decimal_places=2)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
@@ -207,29 +264,24 @@ class PaymentRecord(models.Model):
         ordering = ['-year', '-month']
 
     def save(self, *args, **kwargs):
-        # Automatically set status
+        # Update status
         if self.amount_paid >= self.amount_due:
             self.status = 'Paid'
         elif 0 < self.amount_paid < self.amount_due:
             self.status = 'Partial'
         else:
             self.status = 'Due'
+
         super().save(*args, **kwargs)
 
-        # Update customer's totals
-        total_due = sum(p.amount_due - p.amount_paid for p in self.customer.payments.all())
-        total_paid = sum(p.amount_paid for p in self.customer.payments.all())
-        self.customer.total_due = total_due
-        self.customer.total_paid = total_paid
-        self.customer.save()
-
     def __str__(self):
-        return f"{self.customer.name} - {self.month}/{self.year} - {self.status}"
+        return f"{self.customer.full_name} - {self.month}/{self.year} - {self.status}"
+
 
 
 # -------- Attendance --------
 class Attendance(models.Model):
-    customer = models.ForeignKey(BaseCustomer, on_delete=models.CASCADE, related_name='attendance_records')
+    customer = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='attendance_records')
     date = models.DateField(default=date.today)
     present = models.BooleanField(default=True)
 
@@ -238,8 +290,4 @@ class Attendance(models.Model):
         ordering = ['-date']
 
     def __str__(self):
-        return f"{self.customer.name} - {self.date} - {'Present' if self.present else 'Absent'}"
-
-
-
-
+        return f"{self.customer.full_name} - {self.date} - {'Present' if self.present else 'Absent'}"

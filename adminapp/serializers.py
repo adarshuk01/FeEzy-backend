@@ -3,7 +3,7 @@ import string
 import requests
 from datetime import date, timedelta
 from rest_framework import serializers
-from adminapp.models import Client,Category
+from adminapp.models import Client,Category,Batch
 from django.core.mail import send_mail
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -180,3 +180,25 @@ class ForgotPasswordSerializer(serializers.Serializer):
         from_email = settings.DEFAULT_FROM_EMAIL
         recipient_list = [email]
         send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+
+
+
+from rest_framework import serializers
+
+class BatchSerializer(serializers.ModelSerializer):
+
+    def validate(self, attrs):
+        start = attrs.get("start_time")
+        end = attrs.get("end_time")
+
+        if start and end and start >= end:
+            raise serializers.ValidationError("End time must be after start time")
+
+        return attrs
+
+    class Meta:
+        model = Batch
+        fields = "__all__"
+
+
+
