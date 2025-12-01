@@ -3,7 +3,7 @@ import string
 import requests
 from datetime import date, timedelta
 from rest_framework import serializers
-from adminapp.models import Client,Category,Batch
+from adminapp.models import Client,Category,Batch,Subscription
 from django.core.mail import send_mail
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -183,7 +183,6 @@ class ForgotPasswordSerializer(serializers.Serializer):
 
 
 
-from rest_framework import serializers
 
 class BatchSerializer(serializers.ModelSerializer):
 
@@ -200,5 +199,60 @@ class BatchSerializer(serializers.ModelSerializer):
         model = Batch
         fields = "__all__"
 
+
+
+
+from rest_framework import serializers
+from .models import Subscription
+
+class SubscriptionSerializer(serializers.ModelSerializer):
+    initial_outstanding = serializers.SerializerMethodField(read_only=True)
+    recurring_amount = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Subscription
+        fields = [
+            "id",
+            "client",
+            "name",
+            "admission_fee",
+            "duration_days",
+            "custom_fees",
+            "initial_outstanding",
+            "recurring_amount",
+        ]
+        extra_kwargs = {
+            "client": {"read_only": True},
+        }
+
+    # ---------------- AUTOMATIC CALCULATIONS ----------------
+    def create(self, validated_data):
+        subscription = Subscription(**validated_data)
+
+        # Auto calculate (if in future you store fields in DB, assign here)
+        subscription.initial_out = subscription.calculate_initial_outstanding()
+        subscription.recurring_out = subscription.calculate_recurring_amount()
+
+        subscription.save()
+        return subscription
+
+    def update(self, instance, validated_data):
+        # Normal update
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        # Auto calculation on update
+        instance.initial_out = instance.calculate_initial_outstanding()
+        instance.recurring_out = instance.calculate_recurring_amount()
+
+        instance.save()
+        return instance
+
+   
+    def get_initial_outstanding(self, obj):
+        return obj.calculate_initial_outstanding()
+
+    def get_recurring_amount(self, obj):
+        return obj.calculate_recurring_amount()
 
 

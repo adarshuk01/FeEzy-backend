@@ -2,11 +2,11 @@ from django.shortcuts import render
 
 from adminapp.serializers import (CategorySerializer,LoginSerializer,
                                   ClientCreateSerializer,PasswordUpdateSerializer,
-                                  ForgotPasswordSerializer,BatchSerializer)
+                                  ForgotPasswordSerializer,BatchSerializer,SubscriptionSerializer)
 
 from rest_framework import generics
 
-from adminapp.models import Category,Client,Batch
+from adminapp.models import Category,Client,Batch,Subscription
 
 from rest_framework import authentication,permissions,status
 
@@ -246,3 +246,25 @@ class BatchUpdateRetriveDeleteApiView(generics.RetrieveUpdateDestroyAPIView):
         
         return Batch.objects.filter(client=self.request.user)
     
+
+
+
+class SubscriptionListCreateAPIView(generics.ListCreateAPIView):
+    serializer_class = SubscriptionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes=[authentication.TokenAuthentication]
+
+
+    def get_queryset(self):
+        return Subscription.objects.filter(client=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(client=self.request.user)
+
+
+class SubscriptionRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = SubscriptionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Subscription.objects.filter(client=self.request.user)

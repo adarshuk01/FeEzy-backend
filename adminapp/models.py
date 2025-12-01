@@ -3,6 +3,8 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 
+from django.utils import timezone
+
 
 # -------- Category --------
 class Category(models.Model):
@@ -121,96 +123,67 @@ class Batch(models.Model):
 
 
 
-# -------- Subscription --------
+
 class Subscription(models.Model):
-    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    client = models.ForeignKey('Client', on_delete=models.CASCADE)
     name = models.CharField(max_length=200, null=True, blank=True)
 
-    tuition_fees = models.PositiveIntegerField()
-    tuition_recurring = models.BooleanField(default=False)
+    admission_fee = models.PositiveIntegerField(null=True, blank=True)
 
-    admission_fees = models.PositiveIntegerField()
+    duration_days = models.PositiveIntegerField(default=30)  
 
-    management_fees = models.PositiveIntegerField()
-    management_recurring = models.BooleanField(default=False)
+    custom_fees = models.JSONField(default=list, blank=True)
 
-    uniform_fees = models.PositiveIntegerField()
-    uniform_recurring = models.BooleanField(default=False)
+    def calculate_initial_outstanding(self):
+        total = self.admission_fee
 
-    transport_fees = models.PositiveIntegerField()
-    transport_recurring = models.BooleanField(default=False)
+        for fee in self.custom_fees:
+            total += fee.get("Value", 0)
 
-    book_fees = models.PositiveIntegerField()
-    book_recurring = models.BooleanField(default=False)
+        return total
+    
+    def calculate_recurring_amount(self):
+        total = 0
 
-    other_fees = models.PositiveIntegerField()
-    other_recurring = models.BooleanField(default=False)
+        for fee in self.custom_fees:
+            if fee.get("recurring") is True:
+                total += fee.get("Value", 0)
+
+        return total
+
 
     def __str__(self):
         return self.name or "Subscription"
 
-
-
-# -------- Member (Customer) --------
+    
 class Member(models.Model):
-    client = models.ForeignKey(
-        Client, on_delete=models.CASCADE, related_name='members'
-    )
+    client = models.ForeignKey('Client', on_delete=models.CASCADE, related_name='members')
 
-    # Personal Details
     full_name = models.CharField(max_length=255)
     date_of_birth = models.DateField(null=True, blank=True)
-
-    GENDER_CHOICES = [
-        ('M', 'Male'),
-        ('F', 'Female'),
-        ('O', 'Other'),
-    ]
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True, blank=True)
-    nationality = models.CharField(max_length=100, null=True, blank=True)
-    parent_name = models.CharField(max_length=255, help_text="Guardian or parent name.")
-
-    # Contact
-    contact_number = models.CharField(max_length=20, null=True, blank=True)
-    whatsapp_number = models.CharField(max_length=20, null=True, blank=True)
-    email = models.EmailField(null=True, blank=True)
-
-    # Enrollment
-    subscription = models.ForeignKey(
-        Subscription, on_delete=models.PROTECT,
-        related_name='enrolled_members'
+    age = models.PositiveIntegerField()
+    place = models.CharField(max_length=200)
+    gender = models.CharField(
+        max_length=1,
+        choices=[('M', 'Male'), ('F', 'Female'), ('O', 'Other')],
+        null=True,
+        blank=True
     )
+    parent_name = models.CharField(max_length=255)
 
-    start_date = models.DateField(
-        default=date.today, null=True, blank=True,
-        help_text="The actual enrollment date of the member, used for billing calculations."
-    )
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name='members')
 
-    TERM_CHOICES = [
-        ('M', 'Monthly'),
-        ('Q', 'Quarterly'),
-        ('A', 'Annual'),
-    ]
-    subscription_term = models.CharField(max_length=1, choices=TERM_CHOICES)
-
-    batch_group = models.ForeignKey(
-        Batch, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='members'
-    )
-
-    outstanding_fee = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00,
-        help_text="Initial debt carried forward from before the app usage."
-    )
-
-    recurring_date = models.PositiveSmallIntegerField(
-        help_text="Day of the month (1–31) when recurring fee is due.",
-        null=True, blank=True
-    )
+    outstanding_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    recurring_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.full_name
-
+    
+    @property
+    def end_date(self):
+        return self.recurring_date + timedelta(days=self.subscription.duration_days)
+   
 
 
 # -------- Payment --------
@@ -279,15 +252,35 @@ class PaymentRecord(models.Model):
 
 
 
-# -------- Attendance --------
+
 class Attendance(models.Model):
-    customer = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='attendance_records')
-    date = models.DateField(default=date.today)
-    present = models.BooleanField(default=True)
+    client = models.ForeignKey(
+        'Client', 
+        on_delete=models.CASCADE,
+        related_name='attendances'
+    )
+    batch = models.ForeignKey(
+        'Batch',
+        on_delete=models.CASCADE,
+        related_name='attendances'
+    )
+    member = models.ForeignKey(
+        'Member',
+        on_delete=models.CASCADE,
+        related_name='attendances'
+    )
+
+    # Attendance details
+    date = models.DateField(default=timezone.now)
+    present = models.BooleanField(default=False)
+
+ 
+    # Notes or remarks (optional)
+    remarks = models.TextField(null=True, blank=True)
 
     class Meta:
-        unique_together = ('customer', 'date')
-        ordering = ['-date']
+        unique_together = ('batch', 'member', 'date')  # Prevent duplicate attendance for same day
 
     def __str__(self):
-        return f"{self.customer.full_name} - {self.date} - {'Present' if self.present else 'Absent'}"
+        return f"{self.member.full_name} - {self.batch.name} on {self.date} ({'Present' if self.present else 'Absent'})"
+   

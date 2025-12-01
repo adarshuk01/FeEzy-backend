@@ -20,7 +20,11 @@ urlpatterns = [
 
     path('batch/',views.BatchCreateListApiView.as_view()),
 
-    path('<int:pk>/batch/',views.BatchUpdateRetriveDeleteApiView.as_view())
+    path('<int:pk>/batch/',views.BatchUpdateRetriveDeleteApiView.as_view()),
+
+     path("subscriptions/",views.SubscriptionListCreateAPIView.as_view()),
+
+    path("subscriptions/<int:pk>/",views.SubscriptionRetrieveUpdateDestroyAPIView.as_view())
 
     
 
