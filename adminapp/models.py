@@ -134,23 +134,30 @@ class Subscription(models.Model):
 
     custom_fees = models.JSONField(default=list, blank=True)
 
+    initial_outstanding = models.PositiveIntegerField(default=0)
+    recurring_amount = models.PositiveIntegerField(default=0)
+
     def calculate_initial_outstanding(self):
-        total = self.admission_fee
+        total = self.admission_fee or 0
 
         for fee in self.custom_fees:
             total += fee.get("Value", 0)
 
         return total
-    
+
     def calculate_recurring_amount(self):
         total = 0
-
         for fee in self.custom_fees:
             if fee.get("recurring") is True:
                 total += fee.get("Value", 0)
-
         return total
 
+    def save(self, *args, **kwargs):
+        # Auto calculations before saving
+        self.initial_outstanding = self.calculate_initial_outstanding()
+        self.recurring_amount = self.calculate_recurring_amount()
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name or "Subscription"

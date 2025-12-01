@@ -268,3 +268,6 @@ class SubscriptionRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPI
 
     def get_queryset(self):
         return Subscription.objects.filter(client=self.request.user)
+
+
+
