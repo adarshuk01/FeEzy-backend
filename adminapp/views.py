@@ -227,9 +227,9 @@ class BatchCreateListApiView(generics.ListCreateAPIView):
 
     serializer_class = BatchSerializer
 
-    # authentication_classes = [authentication.TokenAuthentication]
+    authentication_classes = [authentication.TokenAuthentication]
 
-    authentication_classes=[authentication.BasicAuthentication]
+    # authentication_classes=[authentication.BasicAuthentication]
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -246,9 +246,9 @@ class BatchUpdateRetriveDeleteApiView(generics.RetrieveUpdateDestroyAPIView):
 
     serializer_class=BatchSerializer
 
-    # authentication_classes=[authentication.TokenAuthentication]
+    authentication_classes=[authentication.TokenAuthentication]
 
-    authentication_classes=[authentication.BasicAuthentication]
+    # authentication_classes=[authentication.BasicAuthentication]
 
 
     permission_classes=[permissions.IsAuthenticated]
@@ -263,9 +263,9 @@ class BatchUpdateRetriveDeleteApiView(generics.RetrieveUpdateDestroyAPIView):
 class SubscriptionListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = SubscriptionSerializer
     permission_classes = [permissions.IsAuthenticated]
-    # authentication_classes=[authentication.TokenAuthentication]
+    authentication_classes=[authentication.TokenAuthentication]
 
-    authentication_classes=[authentication.BasicAuthentication]
+    # authentication_classes=[authentication.BasicAuthentication]
 
 
 
@@ -277,6 +277,8 @@ class SubscriptionListCreateAPIView(generics.ListCreateAPIView):
 
 
 class SubscriptionRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
+    authentication_classes = [authentication.TokenAuthentication]
+
     serializer_class = SubscriptionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -289,6 +291,8 @@ class SubscriptionRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPI
 class MemberListCreateApiView(generics.ListCreateAPIView):
     serializer_class = MemberSerializer
     permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [authentication.TokenAuthentication]
+
 
     def get_queryset(self):
         # request.user IS Client
@@ -304,6 +308,8 @@ class MemberListCreateApiView(generics.ListCreateAPIView):
 class MemberRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = MemberSerializer
     permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [authentication.TokenAuthentication]
+
 
 
     def get_queryset(self):

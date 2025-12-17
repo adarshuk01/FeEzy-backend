@@ -309,3 +309,5 @@ class PaymentSerializer(serializers.ModelSerializer):
         payment = super().create(validated_data)
         # The Payment.save() logic will auto‑update Bill's paid / due amounts
         return payment
+    
+
