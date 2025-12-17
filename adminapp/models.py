@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 
 from django.utils import timezone
+from decimal import Decimal
 
 
 # -------- Category --------
@@ -127,37 +128,10 @@ class Batch(models.Model):
 class Subscription(models.Model):
     client = models.ForeignKey('Client', on_delete=models.CASCADE)
     name = models.CharField(max_length=200, null=True, blank=True)
-
-    admission_fee = models.PositiveIntegerField(null=True, blank=True)
-
-    duration_days = models.PositiveIntegerField(default=30)  
-
+    admission_fee = models.PositiveIntegerField(default=0)
+    # [{"name":"Tuition","value":2000,"recurring":True}, ...]
     custom_fees = models.JSONField(default=list, blank=True)
-
-    initial_outstanding = models.PositiveIntegerField(default=0)
-    recurring_amount = models.PositiveIntegerField(default=0)
-
-    def calculate_initial_outstanding(self):
-        total = self.admission_fee or 0
-
-        for fee in self.custom_fees:
-            total += fee.get("Value", 0)
-
-        return total
-
-    def calculate_recurring_amount(self):
-        total = 0
-        for fee in self.custom_fees:
-            if fee.get("recurring") is True:
-                total += fee.get("Value", 0)
-        return total
-
-    def save(self, *args, **kwargs):
-        # Auto calculations before saving
-        self.initial_outstanding = self.calculate_initial_outstanding()
-        self.recurring_amount = self.calculate_recurring_amount()
-
-        super().save(*args, **kwargs)
+    duration_days = models.PositiveIntegerField(default=30)  # determines cycle length in days
 
     def __str__(self):
         return self.name or "Subscription"
@@ -168,54 +142,89 @@ class Member(models.Model):
 
     full_name = models.CharField(max_length=255)
     date_of_birth = models.DateField(null=True, blank=True)
-    age = models.PositiveIntegerField()
-    place = models.CharField(max_length=200)
+    age = models.PositiveIntegerField(null=True, blank=True)
+    place = models.CharField(max_length=202, null=True, blank=True)
     gender = models.CharField(
         max_length=1,
         choices=[('M', 'Male'), ('F', 'Female'), ('O', 'Other')],
         null=True,
         blank=True
     )
-    parent_name = models.CharField(max_length=255)
+    nationality = models.CharField(max_length=100, null=True, blank=True)
+
+    # Contact Details
+    contact_number = models.CharField(max_length=20, null=True, blank=True)
+    whatsapp_number = models.CharField(max_length=20, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+    parent_name = models.CharField(max_length=255, null=True, blank=True)
 
     subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name='members')
 
     outstanding_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    recurring_date = models.DateField(null=True, blank=True)
+
+    # IMPORTANT: use DateTimeField so minutes testing works properly.
+    recurring_date = models.DateTimeField(null=True, blank=True)  # next scheduled billing datetime
     is_active = models.BooleanField(default=True)
+    batch_group = models.ForeignKey(
+        Batch, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='members'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)  # record creation time
 
     def __str__(self):
         return self.full_name
-    
-    @property
-    def end_date(self):
-        return self.recurring_date + timedelta(days=self.subscription.duration_days)
-   
+
+class Bill(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='bills')
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT)
+
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    paid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    due_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+
+    bill_date = models.DateTimeField(default=timezone.now)
+    recurring_date = models.DateTimeField(null=True, blank=True)
+    is_recurring = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        # Ensure Decimal arithmetic
+        self.total_amount = Decimal(self.total_amount)
+        self.paid_amount = Decimal(self.paid_amount)
+        self.due_amount = self.total_amount - self.paid_amount
+        super().save(*args, **kwargs)
+
 
 
 # -------- Payment --------
+
 class Payment(models.Model):
-    member = models.ForeignKey(Member, on_delete=models.CASCADE)
-    subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE)
-
     PAYMENT_METHODS = [
-        ('cash', 'Cash'),
-        ('card', 'Card'),
-        ('gpay', 'GPay'),
+        ('CASH', 'Cash'),
+        ('CARD', 'Card'),
     ]
+
+    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS)
+    payment_date = models.DateTimeField(auto_now_add=True)
+    partial_payments=models.JSONField(default=list, blank=True)
 
-    # Fee Components Paid
-    tuition_paid = models.BooleanField(default=False)
-    admission_paid = models.BooleanField(default=False)
-    management_paid = models.BooleanField(default=False)
-    uniform_paid = models.BooleanField(default=False)
-    transport_paid = models.BooleanField(default=False)
-    book_paid = models.BooleanField(default=False)
-    other_paid = models.BooleanField(default=False)
+    def save(self, *args, **kwargs):
+        self.amount = Decimal(self.amount)
+        super().save(*args, **kwargs)
 
-    amount_paid = models.DecimalField(max_digits=12, decimal_places=2)
-    date_paid = models.DateField(auto_now_add=True)
+        # Update the related bill
+        bill = self.bill
+        bill.paid_amount += self.amount
+        bill.save()
+
+    def __str__(self):
+        return f"{self.amount} via {self.payment_method} for {self.bill}"
+
 
     def __str__(self):
         return f"Payment by {self.member.full_name} on {self.date_paid}"
@@ -291,3 +300,5 @@ class Attendance(models.Model):
     def __str__(self):
         return f"{self.member.full_name} - {self.batch.name} on {self.date} ({'Present' if self.present else 'Absent'})"
    
+
+

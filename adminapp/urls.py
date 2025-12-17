@@ -22,9 +22,22 @@ urlpatterns = [
 
     path('<int:pk>/batch/',views.BatchUpdateRetriveDeleteApiView.as_view()),
 
-     path("subscriptions/",views.SubscriptionListCreateAPIView.as_view()),
+    path("subscriptions/",views.SubscriptionListCreateAPIView.as_view()),
 
-    path("subscriptions/<int:pk>/",views.SubscriptionRetrieveUpdateDestroyAPIView.as_view())
+    path("subscription/<int:pk>/",views.SubscriptionRetrieveUpdateDestroyAPIView.as_view()),
+
+    path("members/",views.MemberListCreateApiView.as_view()),
+
+    path("member/<int:pk>/",views.MemberRetrieveUpdateDestroyAPIView.as_view()),
+
+    path('payments/', views.PaymentListCreateView.as_view(), name='payment-list-create'),
+    
+    path('payments/<int:pk>/', views.PaymentDetailView.as_view(), name='payment-detail'),
+    
+   path("recurring-bill/<int:member_id>/", views.RecurringBillView.as_view()),
+
+
+
 
     
 

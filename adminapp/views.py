@@ -2,11 +2,12 @@ from django.shortcuts import render
 
 from adminapp.serializers import (CategorySerializer,LoginSerializer,
                                   ClientCreateSerializer,PasswordUpdateSerializer,
-                                  ForgotPasswordSerializer,BatchSerializer,SubscriptionSerializer)
+                                  ForgotPasswordSerializer,BatchSerializer,SubscriptionSerializer,
+                                  MemberSerializer,PaymentSerializer,BillSerializer)
 
 from rest_framework import generics
 
-from adminapp.models import Category,Client,Batch,Subscription
+from adminapp.models import Category,Client,Batch,Subscription,Member,Payment,Bill
 
 from rest_framework import authentication,permissions,status
 
@@ -24,6 +25,9 @@ from rest_framework import status
 
 from datetime import date, timedelta
 
+from django.utils import timezone
+
+from decimal import Decimal
 
 
 class GetTokenApiView(APIView):
@@ -93,7 +97,9 @@ class CategoryCreateApiView(generics.ListCreateAPIView):
 
     permission_classes=[permissions.IsAdminUser]
 
-    authentication_classes=[authentication.TokenAuthentication]
+    # authentication_classes=[authentication.TokenAuthentication]
+
+    authentication_classes=[authentication.BasicAuthentication]
 
  
     
@@ -221,7 +227,9 @@ class BatchCreateListApiView(generics.ListCreateAPIView):
 
     serializer_class = BatchSerializer
 
-    authentication_classes = [authentication.TokenAuthentication]
+    # authentication_classes = [authentication.TokenAuthentication]
+
+    authentication_classes=[authentication.BasicAuthentication]
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -238,7 +246,10 @@ class BatchUpdateRetriveDeleteApiView(generics.RetrieveUpdateDestroyAPIView):
 
     serializer_class=BatchSerializer
 
-    authentication_classes=[authentication.TokenAuthentication]
+    # authentication_classes=[authentication.TokenAuthentication]
+
+    authentication_classes=[authentication.BasicAuthentication]
+
 
     permission_classes=[permissions.IsAuthenticated]
 
@@ -252,7 +263,10 @@ class BatchUpdateRetriveDeleteApiView(generics.RetrieveUpdateDestroyAPIView):
 class SubscriptionListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = SubscriptionSerializer
     permission_classes = [permissions.IsAuthenticated]
-    authentication_classes=[authentication.TokenAuthentication]
+    # authentication_classes=[authentication.TokenAuthentication]
+
+    authentication_classes=[authentication.BasicAuthentication]
+
 
 
     def get_queryset(self):
@@ -271,3 +285,97 @@ class SubscriptionRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPI
 
 
 
+
+class MemberListCreateApiView(generics.ListCreateAPIView):
+    serializer_class = MemberSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # request.user IS Client
+        return Member.objects.filter(client=self.request.user)
+
+    def perform_create(self, serializer):
+        # auto-assign logged-in client
+        serializer.save(client=self.request.user)
+
+
+
+
+class MemberRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = MemberSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+    def get_queryset(self):
+        return Member.objects.filter(client=self.request.user)
+
+
+
+
+
+   
+class PaymentListCreateView(generics.ListCreateAPIView):
+    queryset = Payment.objects.all()
+    serializer_class = PaymentSerializer
+
+class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Payment.objects.all()
+    serializer_class = PaymentSerializer
+
+
+
+import pytz
+KOLKATA = pytz.timezone("Asia/Kolkata")
+
+
+class RecurringBillView(APIView):
+
+    def post(self, request, member_id):
+        """
+        Generate recurring bill for a specific member.
+        """
+        try:
+            member = Member.objects.get(id=member_id,is_active=True)
+        except Member.DoesNotExist:
+            return Response({"error": "Member not found"}, status=404)
+
+        now = timezone.now().astimezone(KOLKATA)
+        recurring_dt = member.recurring_date.astimezone(KOLKATA)
+
+        # 1️⃣ Not yet time → return empty
+        if now < recurring_dt:
+            return Response({"message": "No bill to generate yet"}, status=200)
+
+        # 2️⃣ Already generated bill for this recurring date → skip
+        if Bill.objects.filter(member=member, recurring_date=member.recurring_date).exists():
+            return Response({"message": "Bill already generated for this cycle"}, status=200)
+
+        # 3️⃣ Generate recurring bill
+        # Only recurring fees for recurring bills
+        total = Decimal("0.00")
+        for fee in member.subscription.custom_fees:
+            if fee.get("recurring", False):
+                total += Decimal(fee.get("value", 0))
+
+        bill = Bill.objects.create(
+            member=member,
+            subscription=member.subscription,
+            total_amount=total,
+            due_amount=total,
+            bill_date=now,
+            recurring_date=member.recurring_date,
+            is_recurring=True
+        )
+
+        # 4️⃣ Move recurring date forward (next month)
+        member.recurring_date += relativedelta(months=1)
+        member.save(update_fields=['recurring_date'])
+
+        return Response({
+            "message": "Recurring bill generated",
+            "bill_id": bill.id,
+            "member_id": member.id,
+            "bill_date": bill.bill_date,
+            "total_amount": str(bill.total_amount),
+            "recurring_date_next": member.recurring_date
+        }, status=201)

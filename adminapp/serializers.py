@@ -1,12 +1,13 @@
-import random
+import random,pytz
 import string
 import requests
 from datetime import date, timedelta
 from rest_framework import serializers
-from adminapp.models import Client,Category,Batch,Subscription
+from adminapp.models import Client,Category,Batch,Subscription,Member,Bill,Payment
 from django.core.mail import send_mail
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from decimal import Decimal
 
 Client = get_user_model()
 
@@ -199,60 +200,112 @@ class BatchSerializer(serializers.ModelSerializer):
         model = Batch
         fields = "__all__"
 
+KOLKATA = pytz.timezone("Asia/Kolkata")
 
+
+def calculate_fees(subscription, include_joining=False):
+    total = Decimal("0.00")
+    if include_joining:
+        total += Decimal(subscription.admission_fee or 0)
+        for fee in subscription.custom_fees:
+            if not fee.get("recurring", False):
+                total += Decimal(fee.get("value", 0))
+    for fee in subscription.custom_fees:
+        if fee.get("recurring", False):
+            total += Decimal(fee.get("value", 0))
+    return total
 
 
 from rest_framework import serializers
 from .models import Subscription
 
 class SubscriptionSerializer(serializers.ModelSerializer):
-    initial_outstanding = serializers.SerializerMethodField(read_only=True)
-    recurring_amount = serializers.SerializerMethodField(read_only=True)
 
-    class Meta:
+    class Meta: 
+
         model = Subscription
-        fields = [
-            "id",
-            "client",
-            "name",
-            "admission_fee",
-            "duration_days",
-            "custom_fees",
-            "initial_outstanding",
-            "recurring_amount",
-        ]
-        extra_kwargs = {
-            "client": {"read_only": True},
-        }
 
-    # ---------------- AUTOMATIC CALCULATIONS ----------------
+        fields = '__all__'
+
+        read_only_fields=['id']
+
+
+
+class MemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Member
+        fields = "__all__"
+        read_only_fields = ['is_active']
+
     def create(self, validated_data):
-        subscription = Subscription(**validated_data)
 
-        # Auto calculate (if in future you store fields in DB, assign here)
-        subscription.initial_out = subscription.calculate_initial_outstanding()
-        subscription.recurring_out = subscription.calculate_recurring_amount()
+        member = Member.objects.create(**validated_data)
 
-        subscription.save()
-        return subscription
+        if not member.recurring_date:
+            return member
 
-    def update(self, instance, validated_data):
-        # Normal update
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        # Convert to DATE ONLY
+        RD = member.recurring_date.astimezone(KOLKATA).date()
+        CD = member.created_at.astimezone(KOLKATA).date()
 
-        # Auto calculation on update
-        instance.initial_out = instance.calculate_initial_outstanding()
-        instance.recurring_out = instance.calculate_recurring_amount()
+        print("DEBUG-RD-date:", RD)
+        print("DEBUG-CD-date:", CD)
 
-        instance.save()
-        return instance
+        subscription = member.subscription
+        duration_days = getattr(subscription, "duration_days", 30)
 
-   
-    def get_initial_outstanding(self, obj):
-        return obj.calculate_initial_outstanding()
+        # ---------------------------------------------------
+        # NO BILL RULES
+        # ---------------------------------------------------
 
-    def get_recurring_amount(self, obj):
-        return obj.calculate_recurring_amount()
+        # 1️⃣ RECURRING DATE IN THE FUTURE → NO BILL
+        if RD > CD:
+            return member  # DO NOT CREATE FIRST BILL
+
+        # 2️⃣ RECURRING DATE IN THE PAST → NO BILL
+        if RD < CD:
+            return member  # DO NOT CREATE FIRST BILL
+
+        # 3️⃣ RECURRING DATE == CREATED DATE → ONLY CASE TO CREATE BILL
+        bill_date = member.recurring_date
+        include_joining = True
+
+        total = calculate_fees(subscription, include_joining=True)
+
+        Bill.objects.create(
+            member=member,
+            subscription=subscription,
+            total_amount=total,
+            due_amount=total,
+            bill_date=bill_date,
+            recurring_date=member.recurring_date,
+            is_recurring=False,  # first bill
+        )
+
+        return member
 
 
+
+class BillSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Bill
+        # optionally, you can exclude fields or set read_only_fields
+        fields = '__all__'
+        read_only_fields = ('paid_amount', 'due_amount', 'bill_date')
+
+    # Optionally, if you want to show member details nested:
+    # member = serializers.StringRelatedField(read_only=True)
+    # subscription = SubscriptionSerializer(read_only=True)
+
+
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = '__all__'
+
+    def create(self, validated_data):
+        payment = super().create(validated_data)
+        # The Payment.save() logic will auto‑update Bill's paid / due amounts
+        return payment
